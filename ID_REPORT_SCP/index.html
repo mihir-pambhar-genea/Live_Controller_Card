@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SCP Live Tracker</title>
+  <!-- Tailwind via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Smooth fonts */
+    html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  </style>
+</head>
+<body class="bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
+  <div id="root"></div>
+
+  <!-- React / ReactDOM UMD -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Recharts UMD -->
+  <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+
+  <script>
+  (() => {
+    const { useEffect, useMemo, useRef, useState } = React;
+    const { createRoot } = ReactDOM;
+    const { PieChart, Pie, Cell, ResponsiveContainer, Tooltip: RechartsTooltip } = Recharts;
+
+    // ---------- utils ----------
+    const clsx = (...args) => args.filter(Boolean).join(" ");
+    const prettyJSON = (obj) => {
+      try { return JSON.stringify(obj, null, 2); } catch { return String(obj); }
+    };
+    const ensureBasicPrefix = (token) => {
+      if (!token) return "";
+      return token.trim().toLowerCase().startsWith("basic ") ? token.trim() : `Basic ${token.trim()}`;
+    };
+
+    // ---------- tiny UI primitives ----------
+    const Button = ({ className = "", variant = "primary", children, ...props }) => {
+      const base = "inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium transition active:scale-[.98] disabled:opacity-50";
+      const variants = {
+        primary: "bg-indigo-600 hover:bg-indigo-700 text-white shadow",
+        ghost: "hover:bg-zinc-100 dark:hover:bg-zinc-800",
+        outline: "border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800",
+        danger: "bg-rose-600 hover:bg-rose-700 text-white shadow",
+        subtle: "bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100",
+      };
+      return React.createElement("button", { className: clsx(base, variants[variant], className), ...props }, children);
+    };
+
+    const Input = (props) =>
+      React.createElement("input", {
+        ...props,
+        className: clsx(
+          "w-full rounded-2xl border border-zinc-300/80 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400",
+          "focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700",
+          props.className || ""
+        )
+      });
+
+    const Card = ({ children, className = "" }) =>
+      React.createElement("div", { className: clsx("rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm", className) }, children);
+
+    const CardHeader = ({ title, action, sub }) =>
+      React.createElement("div", { className: "flex items-start justify-between gap-2 p-4" },
+        React.createElement("div", null,
+          React.createElement("h3", { className: "text-base font-semibold text-zinc-900 dark:text-zinc-100" }, title),
+          sub ? React.createElement("p", { className: "mt-1 text-xs text-zinc-500 dark:text-zinc-400" }, sub) : null
+        ),
+        React.createElement("div", { className: "flex items-center gap-2" }, action)
+      );
+
+    const CardContent = ({ children }) => React.createElement("div", { className: "p-4 pt-0" }, children);
+
+    const Badge = ({ children, variant = "default" }) => {
+      const styles = {
+        default: "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100",
+        green: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+        red: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300",
+        yellow: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+      };
+      return React.createElement("span", { className: clsx("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", styles[variant]) }, children);
+    };
+
+    const SmallLabel = ({ children }) => React.createElement("span", { className: "text-xs text-zinc-500 dark:text-zinc-400" }, children);
+
+    // ---------- chart ----------
+    const UtilizationDonut = ({ capacity = 0, used = 0 }) => {
+      const safeCapacity = Math.max(0, capacity || 0);
+      const safeUsed = Math.min(Math.max(0, used || 0), safeCapacity || used);
+      const free = Math.max(0, safeCapacity - safeUsed);
+      const data = React.useMemo(() => [
+        { name: "Used", value: safeUsed },
+        { name: "Free", value: free },
+      ], [safeUsed, free]);
+      const pct = safeCapacity > 0 ? Math.round((safeUsed / safeCapacity) * 100) : 0;
+      const COLORS = ["#4f46e5", "#e5e7eb"]; // indigo-600, zinc-200
+
+      return React.createElement("div", { className: "relative h-40 w-full" },
+        React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
+          React.createElement(PieChart, null,
+            React.createElement(RechartsTooltip, { formatter: (v, n) => [v, n] }),
+            React.createElement(Pie, {
+              data, innerRadius: 55, outerRadius: 75, paddingAngle: 2, dataKey: "value", startAngle: 90, endAngle: -270
+            },
+              data.map((_, i) => React.createElement(Cell, { key: "cell-" + i, fill: COLORS[i % COLORS.length] }))
+            )
+          )
+        ),
+        React.createElement("div", { className: "pointer-events-none absolute inset-0 flex flex-col items-center justify-center" },
+          React.createElement("div", { className: "text-xl font-semibold text-zinc-900 dark:text-zinc-100" }, pct + "%"),
+          React.createElement("div", { className: "text-[10px] text-zinc-500 dark:text-zinc-400" },
+            (safeUsed || 0).toLocaleString(), " / ", (safeCapacity || 0).toLocaleString()
+          )
+        )
+      );
+    };
+
+    // ---------- SCP card ----------
+    const SCPCard = ({ scp, token, intervalMs, onRemove }) => {
+      const [data, setData] = useState(null);
+      const [error, setError] = useState("");
+      const [loading, setLoading] = useState(false);
+      const [paused, setPaused] = useState(false);
+      const [openJSON, setOpenJSON] = useState(false);
+      const timerRef = useRef(null);
+
+      const headers = useMemo(() => ({
+        "Authorization": ensureBasicPrefix(token),
+        "Content-Type": "application/json",
+      }), [token]);
+
+      const url = `https://remote-ops-mercury-api.sequr.io/v1/${encodeURIComponent(String(scp))}/status/id`;
+
+      const fetchOnce = async () => {
+        if (!token) { setError("Missing Basic token"); return; }
+        setLoading(true);
+        try {
+          const res = await fetch(url, { headers });
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(\`HTTP \${res.status} - \${text || res.statusText}\`);
+          }
+          const json = await res.json();
+          setData(json);
+          setError("");
+        } catch (e) {
+          setError(e?.message || "Unknown error");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      useEffect(() => {
+        if (paused) return;
+        fetchOnce();
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = setInterval(fetchOnce, intervalMs);
+        return () => timerRef.current && clearInterval(timerRef.current);
+      }, [url, headers.Authorization, intervalMs, paused]);
+
+      const derived = data?.data?.derived || {};
+      const fw = derived.firmware_version
+        || ((data?.data?.sft_rev_major != null && data?.data?.sft_rev_minor != null) ? \`\${data.data.sft_rev_major}.\${String(data.data.sft_rev_minor).slice(0,2)}.x\` : "—");
+      const model = derived.model || "—";
+      const mac = derived.mac || data?.data?.mac_addr || "—";
+      const scpNumber = (derived.scp_number ?? data?.data?.scp_number ?? scp);
+      const capacity = Number(derived.cards_capacity ?? data?.data?.db_max ?? 0) || 0;
+      const total = Number(derived.total_cards ?? data?.data?.db_active ?? 0) || 0;
+
+      const statusBadge = error
+        ? React.createElement(Badge, { variant: "red" }, "Error")
+        : (loading
+            ? React.createElement(Badge, { variant: "yellow" }, "Loading…")
+            : React.createElement(Badge, { variant: "green" }, "Live"));
+
+      return React.createElement(Card, { className: "relative overflow-hidden" },
+        React.createElement(CardHeader, {
+          title: React.createElement("span", { className: "flex items-center gap-2" },
+            "SCP ", React.createElement("span", { className: "font-mono text-indigo-600 dark:text-indigo-400" }, scpNumber)
+          ),
+          sub: React.createElement("div", { className: "flex items-center gap-2" },
+            statusBadge, React.createElement(SmallLabel, null, "Polling every " + Math.round(intervalMs/1000) + "s")
+          ),
+          action: React.createElement("div", { className: "flex items-center gap-2" },
+            React.createElement(Button, { variant: "subtle", onClick: fetchOnce, title: "Refresh now" }, "⟳", " Refresh"),
+            React.createElement(Button, { variant: "subtle", onClick: () => setPaused(p => !p), title: paused ? "Resume" : "Pause" }, paused ? "▶ Resume" : "⏸ Pause"),
+            React.createElement(Button, { variant: "danger", onClick: onRemove, title: "Remove" }, "🗑 Remove")
+          )
+        }),
+        React.createElement(CardContent, null,
+          React.createElement("div", { className: "grid grid-cols-1 gap-4 md:grid-cols-2" },
+            React.createElement("div", null,
+              React.createElement(UtilizationDonut, { capacity: capacity, used: total })
+            ),
+            React.createElement("div", { className: "flex flex-col justify-center gap-2" },
+              React.createElement("div", { className: "grid grid-cols-[115px_1fr] items-center gap-x-3 gap-y-1 text-sm" },
+                React.createElement("div", { className: "text-zinc-500 dark:text-zinc-400" }, "Firmware"),
+                React.createElement("div", { className: "font-medium text-zinc-900 dark:text-zinc-100" }, fw),
+                React.createElement("div", { className: "text-zinc-500 dark:text-zinc-400" }, "Model"),
+                React.createElement("div", { className: "font-medium" }, model),
+                React.createElement("div", { className: "text-zinc-500 dark:text-zinc-400" }, "MAC"),
+                React.createElement("div", { className: "font-medium font-mono" }, mac),
+                React.createElement("div", { className: "text-zinc-500 dark:text-zinc-400" }, "Capacity"),
+                React.createElement("div", { className: "font-medium" }, (capacity || 0).toLocaleString()),
+                React.createElement("div", { className: "text-zinc-500 dark:text-zinc-400" }, "Total Cards"),
+                React.createElement("div", { className: "font-medium" }, (total || 0).toLocaleString()),
+              ),
+              React.createElement("div", { className: "mt-3 flex items-center gap-2" },
+                React.createElement(Button, { variant: "outline", onClick: () => setOpenJSON(true) }, "ℹ Full JSON"),
+                error ? React.createElement("span", { className: "text-xs text-rose-600 dark:text-rose-400" }, error) : null
+              )
+            )
+          )
+        ),
+        openJSON && React.createElement("div", {
+            className: "fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4",
+            onClick: () => setOpenJSON(false)
+          },
+          React.createElement("div", {
+              className: "max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900",
+              onClick: (e) => e.stopPropagation()
+            },
+            React.createElement("div", { className: "flex items-center justify-between border-b border-zinc-200 p-4 dark:border-zinc-800" },
+              React.createElement("div", { className: "flex items-center gap-2" },
+                React.createElement("span", { className: "text-sm font-semibold" }, "Full response (SCP " + scpNumber + ")")
+              ),
+              React.createElement(Button, { variant: "ghost", onClick: () => setOpenJSON(false) }, "✕")
+            ),
+            React.createElement("div", { className: "max-h-[70vh] overflow-auto p-4" },
+              React.createElement("pre", { className: "whitespace-pre-wrap break-words text-xs leading-relaxed text-zinc-800 dark:text-zinc-100" },
+                prettyJSON(data || { error: error || "No data yet" })
+              )
+            )
+          )
+        )
+      );
+    };
+
+    // ---------- root app ----------
+    const App = () => {
+      const [token, setToken] = useState("");
+      const [scpInput, setScpInput] = useState("");
+      const [scps, setScps] = useState([]);
+      const [intervalSec, setIntervalSec] = useState(10);
+
+      useEffect(() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem("scp-tracker-state") || "{}");
+          if (saved.token) setToken(saved.token);
+          if (Array.isArray(saved.scps)) setScps(saved.scps);
+          if (saved.intervalSec) setIntervalSec(saved.intervalSec);
+        } catch {}
+      }, []);
+
+      useEffect(() => {
+        localStorage.setItem("scp-tracker-state", JSON.stringify({ token, scps, intervalSec }));
+      }, [token, scps, intervalSec]);
+
+      const addScps = () => {
+        if (!scpInput.trim()) return;
+        const parts = scpInput
+          .split(/[\\s,]+/)
+          .map(s => s.trim())
+          .filter(Boolean)
+          .map(s => (s.match(/^\\d+$/) ? Number(s) : s));
+        const next = Array.from(new Set([...(scps || []), ...parts]));
+        setScps(next);
+        setScpInput("");
+      };
+
+      const removeScp = (idx) => {
+        const copy = [...scps];
+        copy.splice(idx, 1);
+        setScps(copy);
+      };
+
+      const clearAll = () => setScps([]);
+      const intervalMs = Math.max(2000, Number(intervalSec) * 1000 || 10000);
+
+      return React.createElement("div", { className: "min-h-screen p-4" },
+        React.createElement("div", { className: "mx-auto max-w-7xl" },
+          React.createElement("div", { className: "flex flex-col gap-4 md:flex-row md:items-center md:justify-between" },
+            React.createElement("div", null,
+              React.createElement("h1", { className: "text-2xl font-bold tracking-tight" }, "SCP Live Tracker"),
+              React.createElement("p", { className: "mt-1 text-sm text-zinc-600 dark:text-zinc-400" }, "Frontend-only mini dashboards for multiple Mercury SCPs")
+            ),
+            React.createElement("div", { className: "flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400" },
+              React.createElement("span", null, "GET https://remote-ops-mercury-api.sequr.io/v1/{scp}/status/id")
+            )
+          ),
+
+          React.createElement(Card, { className: "mt-4" },
+            React.createElement(CardHeader, {
+              title: "Connection Settings",
+              sub: "Paste your Basic token and add one or more SCP numbers to start live tracking."
+            }),
+            React.createElement(CardContent, null,
+              React.createElement("div", { className: "grid grid-cols-1 gap-3 md:grid-cols-3" },
+                React.createElement("div", { className: "md:col-span-2" },
+                  React.createElement("label", { className: "mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-300" }, "Authorization (Basic token)"),
+                  React.createElement(Input, {
+                    placeholder: "Paste token here — either 'Basic xxx' or just the base64 token",
+                    value: token, onChange: (e) => setToken(e.target.value)
+                  })
+                ),
+                React.createElement("div", null,
+                  React.createElement("label", { className: "mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-300" }, "Polling interval (seconds)"),
+                  React.createElement(Input, {
+                    type: "number", min: 2, step: 1,
+                    value: intervalSec,
+                    onChange: (e) => setIntervalSec(Number(e.target.value))
+                  })
+                )
+              ),
+              React.createElement("div", { className: "mt-4 grid grid-cols-1 gap-3 md:grid-cols-3" },
+                React.createElement("div", { className: "md:col-span-2" },
+                  React.createElement("label", { className: "mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-300" }, "Add SCP number(s)"),
+                  React.createElement("div", { className: "flex items-center gap-2" },
+                    React.createElement(Input, {
+                      placeholder: "e.g., 6533 or multiple like 6533, 5720, 6001",
+                      value: scpInput,
+                      onChange: (e) => setScpInput(e.target.value),
+                      onKeyDown: (e) => { if (e.key === "Enter") addScps(); }
+                    }),
+                    React.createElement(Button, { onClick: addScps }, "＋ Add")
+                  ),
+                  React.createElement(SmallLabel, null, "Tip: You can paste comma or space separated SCP values.")
+                ),
+                React.createElement("div", { className: "flex items-end justify-start gap-2" },
+                  React.createElement(Button, { variant: "outline", onClick: () => location.reload() }, "⟳ Reload App"),
+                  React.createElement(Button, { variant: "danger", onClick: clearAll }, "🗑 Clear All SCPs")
+                )
+              ),
+              (scps && scps.length > 0) &&
+                React.createElement("div", { className: "mt-3 text-xs text-zinc-500 dark:text-zinc-400" },
+                  "Tracking ", scps.length, " SCP", (scps.length > 1 ? "s" : ""), ": ", scps.join(", ")
+                )
+            )
+          ),
+
+          React.createElement("div", { className: "mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" },
+            (scps || []).map((scp, idx) =>
+              React.createElement(SCPCard, {
+                key: String(scp) + "-" + idx,
+                scp, token,
+                intervalMs,
+                onRemove: () => removeScp(idx)
+              })
+            )
+          ),
+
+          (scps && scps.length === 0) &&
+            React.createElement("div", { className: "mt-8 flex flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-300 p-10 text-center dark:border-zinc-700" },
+              React.createElement("div", { className: "rounded-full bg-indigo-50 p-3 dark:bg-indigo-900/30" }, "＋"),
+              React.createElement("h3", { className: "mt-3 text-lg font-semibold" }, "Start tracking your first SCP"),
+              React.createElement("p", { className: "mt-1 max-w-md text-sm text-zinc-600 dark:text-zinc-400" },
+                "Paste your Basic token, add one or more SCP numbers, and dashboards will appear here with live updates."
+              )
+            ),
+
+          React.createElement("div", { className: "mt-10 pb-8 text-center text-xs text-zinc-500 dark:text-zinc-400" },
+            "Built for Genea / Sequr Mercury remote ops. Frontend-only. Ensure API CORS allows your origin."
+          )
+        )
+      );
+    };
+
+    const container = document.getElementById("root");
+    const root = createRoot(container);
+    root.render(React.createElement(App));
+  })();
+  </script>
+</body>
+</html>
