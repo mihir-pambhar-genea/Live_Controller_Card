@@ -1,31 +1,31 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SCP Live Tracker</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://unpkg.com https://cdn.jsdelivr.net; connect-src *; img-src 'self' data:; style-src 'unsafe-inline' https://cdn.tailwindcss.com; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net 'unsafe-inline' 'unsafe-eval';">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Support Tools</title>
+
+  <!-- DEV-ONLY CSP: allow the CDNs you use -->
+  <!-- For production, tighten this or host libs locally -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self';
+                 connect-src *;
+                 img-src 'self' data:;
+                 style-src 'unsafe-inline' https://cdn.tailwindcss.com;
+                 script-src 'self' https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com 'unsafe-inline' 'unsafe-eval'">
+
+  <!-- Tailwind (optional) -->
+  <script src="https://cdn.tailwindcss.com" defer></script>
 </head>
 <body class="bg-zinc-50 text-zinc-900">
-  <div id="root"></div>
+  <div id="root" data-logo-src="./genea-logo.png"></div>
 
-  <!-- React and libs from two CDNs for resiliency -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
-  <script>
-  // Fallback to jsDelivr if UNPKG fails to load (simple check)
-  (function () {
-    function need(lib) { return typeof window[lib] === 'undefined'; }
-    function add(src) { var s=document.createElement('script'); s.src=src; document.head.appendChild(s); }
-    if (need('React'))    add('https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js');
-    if (need('ReactDOM')) add('https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js');
-    if (need('Recharts')) add('https://cdn.jsdelivr.net/npm/recharts/umd/Recharts.min.js');
-  })();
-  </script>
 
-  <!-- Our app (plain ASCII JS) -->
-  <script src="./app.js"></script>
+  <!-- React in order -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" defer></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" defer></script>
+  <!-- Note: no Recharts tag here; the app lazy-loads it -->
+  <script src="./app.js" defer></script>
 </body>
+
 </html>
